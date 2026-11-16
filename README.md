@@ -6,10 +6,10 @@ An Android downloader for **MP4 video** and **MP3 audio**. No built-in player.
 
 1. Open [Actions → Build Android APK](https://github.com/rajibsarder72942/RS-Tube/actions/workflows/android.yml).
 2. Open the latest successful run and download **RS-Tube-Android** under Artifacts (sign in to GitHub).
-3. Unzip it on your Android phone and install `RS-Tube-v0.1.0-test.apk`.
+3. Unzip it on your Android phone and install `RS-Tube-v0.2.0-test.apk`.
 4. Allow installation from your browser/file manager if Android asks. Android 10 or newer is required.
 
-The artifact also includes this commit's source and SHA-256 checksums. APKs are development-signed test builds, not production releases. CI caches its debug key, but caches can expire; a changed key requires uninstalling the old test build before installation. Downloads already exported to public Downloads remain, but uninstalling removes local history. Configure a private stable release signing key before distributing production builds.
+The artifact also includes the exact source and SHA-256 checksums. Without configured stable signing secrets, CI builds a test APK; it is not published as an in-app update. Official update releases must share one private stable signing key. See [UPDATES.md](UPDATES.md) for the one-time setup and release process.
 
 ## Features
 
@@ -20,6 +20,7 @@ The artifact also includes this commit's source and SHA-256 checksums. APKs are 
 - Save through Android MediaStore to **Downloads/RS Tube** without broad storage access.
 - Share a saved file with another app. RS Tube has no playback screen or player.
 - Update the bundled yt-dlp engine from within the app.
+- **App updates:** detect newer published releases, download their APK inside RS Tube, verify it and open Android installation confirmation. No browser redirect. See [UPDATES.md](UPDATES.md).
 - Dark interface, no ads, login, analytics, remote processing server or API key.
 
 ## Source support and limits
@@ -40,7 +41,7 @@ gradle testDebugUnitTest lintDebug assembleDebug
 
 This initial repository uses the pinned Gradle version from `gradle/actions/setup-gradle` in CI; no Gradle wrapper binary is checked in. To add a wrapper locally with Gradle installed: `gradle wrapper --gradle-version 8.13`.
 
-Every push to `main` builds a test APK. A `v*` tag publishes a **test prerelease** only after the checks pass. Production signing is intentionally not configured.
+Every push to `main` builds an APK. A matching `v*` tag publishes a stable signed update release only after checks pass and stable signing secrets have been configured. Test builds without those secrets are never advertised as automatic updates.
 
 ## Verification on a phone
 

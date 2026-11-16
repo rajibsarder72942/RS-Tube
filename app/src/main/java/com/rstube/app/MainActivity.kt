@@ -32,6 +32,11 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private lateinit var history: LinearLayout
+    private lateinit var appUpdater: AppUpdater
+    private lateinit var appUpdateStatus: TextView
+    private lateinit var appUpdateButton: Button
+    private lateinit var appUpdateCancel: Button
+    private lateinit var appUpdateProgress: ProgressBar
     private val handler = Handler(Looper.getMainLooper())
     private var lastHistory = ""
     private val poll = object : Runnable {
@@ -60,6 +65,31 @@ class MainActivity : Activity() {
         body.addView(label("Your link. Your download.", 32, Color.WHITE, true).apply { setPadding(0, dp(30), 0, dp(8)) })
         body.addView(label("Save video as MP4 or audio as MP3.", 15, muted))
         body.addView(label("FACEBOOK  ·  YOUTUBE  ·  WEB LINKS", 11, mint, true).apply { setPadding(0, dp(18), 0, dp(24)) })
+
+        appUpdater = AppUpdater(this)
+        val updateCard = columnCard()
+        body.addView(updateCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+        updateCard.addView(label("APP UPDATES", 12, mint, true))
+        appUpdateStatus = label("Version ${BuildConfig.VERSION_NAME}", 14, Color.WHITE)
+        updateCard.addView(appUpdateStatus)
+        appUpdateProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            progressTintList = ColorStateList.valueOf(mint)
+            indeterminateTintList = ColorStateList.valueOf(mint)
+        }
+        updateCard.addView(appUpdateProgress, LinearLayout.LayoutParams(-1, dp(20)))
+        appUpdateButton = button("Check for app updates", false).apply {
+            setOnClickListener {
+                val state = appUpdater.state()
+                when {
+                    state.action == "Install update" -> appUpdater.install(this@MainActivity) { toast(it) }
+                    state.availableVersion != null -> appUpdater.download()
+                    state.action == "Check for app updates" -> appUpdater.check()
+                }
+            }
+        }
+        updateCard.addView(appUpdateButton)
+        appUpdateCancel = button("Cancel update download", false).apply { setOnClickListener { appUpdater.cancel() } }
+        updateCard.addView(appUpdateCancel)
 
         val card = columnCard()
         body.addView(card)
@@ -162,6 +192,7 @@ class MainActivity : Activity() {
     }
 
     private fun refresh() {
+        refreshAppUpdate()
         val busy = DownloadService.busy
         status.text = DownloadStore.status(this)
         val current = DownloadStore.progress(this)
@@ -175,6 +206,27 @@ class MainActivity : Activity() {
         val items = DownloadStore.history(this)
         val signature = items.toString()
         if (signature != lastHistory) { lastHistory = signature; renderHistory(items) }
+    }
+
+    private fun refreshAppUpdate() {
+        val state = appUpdater.state()
+        appUpdateStatus.text = state.message
+        appUpdateButton.text = state.action
+        appUpdateButton.isEnabled = state.action == "Check for app updates" ||
+            state.action == "Install update" || state.availableVersion != null
+        appUpdateProgress.visibility = if (state.cancellable || state.progress == 100) View.VISIBLE else View.GONE
+        appUpdateProgress.isIndeterminate = state.progress < 0
+        appUpdateProgress.progress = state.progress.coerceAtLeast(0)
+        appUpdateCancel.visibility = if (state.cancellable) View.VISIBLE else View.GONE
+        val version = state.availableVersion
+        val prefs = getPreferences(MODE_PRIVATE)
+        if (version != null && hasWindowFocus() && prefs.getString("updatePrompt", "") != version) {
+            prefs.edit().putString("updatePrompt", version).apply()
+            AlertDialog.Builder(this).setTitle("Update available · $version")
+                .setMessage("Download the new RS Tube version here. Android will ask you to confirm installation.")
+                .setPositiveButton("Download update") { _, _ -> appUpdater.download() }
+                .setNegativeButton("Later", null).show()
+        }
     }
 
     private fun renderHistory(items: JSONArray) {
@@ -214,8 +266,17 @@ class MainActivity : Activity() {
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receive(intent) }
-    override fun onResume() { super.onResume(); handler.post(poll) }
+    override fun onResume() { super.onResume(); appUpdater.check(automatic = true); handler.post(poll) }
     override fun onPause() { handler.removeCallbacks(poll); super.onPause() }
+    override fun onDestroy() { appUpdater.close(); super.onDestroy() }
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == AppUpdater.INSTALL_PERMISSION) {
+            if (packageManager.canRequestPackageInstalls()) appUpdater.install(this) { toast(it) }
+            else toast("Installation permission was not granted. Tap Install update to try again.")
+        }
+    }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("link", link.text.toString())
         getPreferences(MODE_PRIVATE).edit().putBoolean("audio", isAudio()).putInt("quality", quality.selectedItemPosition).apply()
@@ -223,7 +284,7 @@ class MainActivity : Activity() {
     }
 
     private fun about() {
-        AlertDialog.Builder(this).setTitle("RS Tube · 0.1.0")
+        AlertDialog.Builder(this).setTitle("RS Tube · ${BuildConfig.VERSION_NAME}")
             .setMessage("MP4 video and MP3 audio downloads. No built-in player.\n\nBuilt with yt-dlp, youtubedl-android and FFmpeg. Free software under GNU GPL v3; no warranty. You may redistribute it under that license.\n\nProcessing happens on your device. Links go to their source websites; the engine updater contacts GitHub. No ads or analytics.\n\nDownloads may fail when a website changes or restricts access. Higher MP3 bitrate does not improve the original recording.\n\nSource code, licenses and build instructions are available in the repository.")
             .setPositiveButton("Source & licenses") { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/rajibsarder72942/RS-Tube"))) }
             .setNegativeButton("Close", null).show()
