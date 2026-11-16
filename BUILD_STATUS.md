@@ -5,7 +5,9 @@ Prepared version: 0.2.0, Android 10+, player-free MP4/MP3 downloader with in-app
 - XML resource and manifest parsing: passed.
 - GitHub Actions workflow YAML parsing: passed.
 - Previous 0.1.0 compilation, JUnit and lint: passed in GitHub Actions run [43832763970](https://github.com/rajibsarder72942/RS-Tube/actions/runs/43832763970).
-- 0.2.0 compilation, JUnit and lint: pending the new GitHub Actions run.
+- 0.2.0 compilation, JUnit and lint: passed in [GitHub Actions run 43835700107](https://github.com/rajibsarder72942/RS-Tube/actions/runs/43835700107), testing commit `7e7c46de5dd3503f03b85c6a4c8af0d87ad3e35c`.
+- The new APK was re-signed locally with the private stable RS Tube key and cryptographically verified using Android SDK apksigner. The certificate was checked against the saved keystore. No private key was committed or published.
+- GitHub still requires the four signing secrets from UPDATES.md before it can publish official future updates. The key and setup files are delivered privately to the owner.
 - Update release manifest generation, test-build exclusion and XML/YAML checks: passed locally.
 - Physical-device tests and live YouTube/Facebook/direct-link downloads: not run.
 - Repository access: verified. The Raja GitHub connection now includes `RS-Tube`.
