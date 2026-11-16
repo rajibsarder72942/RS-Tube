@@ -3,6 +3,7 @@ package com.rstube.app
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.RecoverableSecurityException
 import android.content.*
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -12,6 +13,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.*
 import android.provider.Settings
+import android.provider.MediaStore
+import java.util.concurrent.Executors
 import android.view.*
 import android.widget.*
 import org.json.JSONArray
@@ -41,6 +44,11 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastHistory = ""
     private var promptedUpdateVersion: String? = null
+    private val deletionExecutor = Executors.newSingleThreadExecutor()
+    private var pendingDeleteId: String? = null
+    private var pendingDeleteUri: String? = null
+    private var pendingDeleteHandledBySystem = false
+    private var deletionBusy = false
     private val automaticUpdateCheck = object : Runnable {
         override fun run() { appUpdater.check(); handler.postDelayed(this, 5 * 60 * 1000L) }
     }
@@ -168,6 +176,9 @@ class MainActivity : Activity() {
         if (savedInstanceState != null) {
             link.setText(savedInstanceState.getString("link", ""))
             promptedUpdateVersion = savedInstanceState.getString("promptedUpdateVersion")
+            pendingDeleteId = savedInstanceState.getString("pendingDeleteId")
+            pendingDeleteUri = savedInstanceState.getString("pendingDeleteUri")
+            pendingDeleteHandledBySystem = savedInstanceState.getBoolean("pendingDeleteHandledBySystem")
         }
         else receive(intent)
         if (!DownloadService.busy && DownloadStore.progress(this) in 0..99) {
@@ -268,7 +279,103 @@ class MainActivity : Activity() {
                     } catch (_: Exception) { toast("File is unavailable. It may have been moved or deleted.") }
                 }
             })
+            card.addView(button("Delete", false).apply {
+                setTextColor(Color.rgb(255, 125, 125))
+                contentDescription = "Delete " + item.optString("name")
+                setOnClickListener { confirmDelete(item.getString("id"), uri, item.optString("name")) }
+            })
             history.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        }
+    }
+
+
+    private fun confirmDelete(id: String, uri: String, name: String) {
+        if (deletionBusy || pendingDeleteId != null) { toast("Finish the current deletion first"); return }
+        val dialog = AlertDialog.Builder(this).setTitle("Delete download?")
+            .setMessage(name)
+            .setNeutralButton("Cancel", null)
+            .setNegativeButton("History only") { _, _ -> removeHistory(id, false) }
+        if (uri.isNotBlank()) dialog.setPositiveButton("File + history") { _, _ ->
+            AlertDialog.Builder(this).setTitle("Permanently delete file?")
+                .setMessage("The downloaded file will be permanently deleted from your phone, and its history entry will be removed.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Delete file") { _, _ -> deleteFileAndHistory(id, uri, true) }.show()
+        }
+        dialog.show()
+    }
+
+    private fun removeHistory(id: String, fileDeleted: Boolean) {
+        deletionBusy = true
+        deletionExecutor.execute {
+            val removed = DownloadStore.remove(this, id)
+            handler.post {
+                deletionBusy = false
+                if (!isFinishing && !isDestroyed) {
+                    if (removed) {
+                        lastHistory = ""
+                        refresh()
+                        toast(if (fileDeleted) "File and history removed" else "History removed; file kept")
+                    } else toast(if (fileDeleted) "File removed, but history could not be saved" else "Could not remove history")
+                }
+            }
+        }
+    }
+
+    private fun deleteFileAndHistory(id: String, uriText: String, allowConsent: Boolean) {
+        val uri = Uri.parse(uriText)
+        if (uri.scheme != "content" || uri.authority != MediaStore.AUTHORITY) {
+            toast("This file cannot be deleted here. You can remove its history entry.")
+            return
+        }
+        deletionBusy = true
+        deletionExecutor.execute {
+            try {
+                contentResolver.delete(uri, null, null)
+                // Zero rows means the file is already gone; removing its stale history is safe.
+                val removed = DownloadStore.remove(this, id)
+                handler.post {
+                    deletionBusy = false
+                    if (!isFinishing && !isDestroyed) {
+                        lastHistory = ""
+                        refresh()
+                        toast(if (removed) "File and history removed" else "File removed, but history could not be saved")
+                    }
+                }
+            } catch (error: SecurityException) {
+                handler.post {
+                    deletionBusy = false
+                    if (!isFinishing && !isDestroyed) requestDeleteConsent(id, uri, error, allowConsent)
+                }
+            } catch (_: Exception) {
+                handler.post {
+                    deletionBusy = false
+                    if (!isFinishing && !isDestroyed) toast("File could not be deleted. History has been kept.")
+                }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun requestDeleteConsent(id: String, uri: Uri, error: SecurityException, allowed: Boolean) {
+        if (!allowed) { toast("Permission was not granted. History has been kept."); return }
+        try {
+            val request = if (Build.VERSION.SDK_INT >= 30) {
+                pendingDeleteHandledBySystem = true
+                MediaStore.createDeleteRequest(contentResolver, listOf(uri))
+            } else if (error is RecoverableSecurityException) {
+                pendingDeleteHandledBySystem = false
+                error.userAction.actionIntent
+            } else {
+                toast("Android does not allow deleting this file here. History has been kept.")
+                return
+            }
+            pendingDeleteId = id
+            pendingDeleteUri = uri.toString()
+            startIntentSenderForResult(request.intentSender, DELETE_PERMISSION, null, 0, 0, 0)
+        } catch (_: Exception) {
+            pendingDeleteId = null
+            pendingDeleteUri = null
+            toast("Could not request deletion permission. History has been kept.")
         }
     }
 
@@ -283,10 +390,23 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receive(intent) }
     override fun onResume() { super.onResume(); handler.post(automaticUpdateCheck); handler.post(poll) }
     override fun onPause() { handler.removeCallbacks(automaticUpdateCheck); handler.removeCallbacks(poll); super.onPause() }
-    override fun onDestroy() { appUpdater.close(); super.onDestroy() }
+    override fun onDestroy() { appUpdater.close(); deletionExecutor.shutdown(); super.onDestroy() }
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == DELETE_PERMISSION) {
+            val id = pendingDeleteId
+            val uri = pendingDeleteUri
+            val systemDeleted = pendingDeleteHandledBySystem
+            pendingDeleteId = null
+            pendingDeleteUri = null
+            pendingDeleteHandledBySystem = false
+            if (resultCode == RESULT_OK && id != null && uri != null) {
+                if (systemDeleted) removeHistory(id, true)
+                else deleteFileAndHistory(id, uri, false)
+            } else toast("Deletion cancelled; file and history kept")
+            return
+        }
         if (requestCode == AppUpdater.INSTALL_PERMISSION) {
             if (packageManager.canRequestPackageInstalls()) appUpdater.install(this) { toast(it) }
             else toast("Installation permission was not granted. Tap Install update to try again.")
@@ -295,6 +415,9 @@ class MainActivity : Activity() {
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("link", link.text.toString())
         outState.putString("promptedUpdateVersion", promptedUpdateVersion)
+        outState.putString("pendingDeleteId", pendingDeleteId)
+        outState.putString("pendingDeleteUri", pendingDeleteUri)
+        outState.putBoolean("pendingDeleteHandledBySystem", pendingDeleteHandledBySystem)
         getPreferences(MODE_PRIVATE).edit().putBoolean("audio", isAudio()).putInt("quality", quality.selectedItemPosition).apply()
         super.onSaveInstanceState(outState)
     }
@@ -324,5 +447,5 @@ class MainActivity : Activity() {
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun toast(value: String) = Toast.makeText(this, value, Toast.LENGTH_LONG).show()
-    companion object { private const val VIDEO = 1001; private const val AUDIO = 1002 }
+    companion object { private const val VIDEO = 1001; private const val AUDIO = 1002; private const val DELETE_PERMISSION = 813 }
 }
