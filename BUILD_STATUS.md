@@ -1,6 +1,6 @@
 # Build status — 2026-11-16
 
-Prepared version: 0.2.1 (code 3), Android 10+, player-free MP4/MP3 downloader with in-app updates and the approved tilted red arrow on yellow logo.
+Prepared version: 0.2.2 (code 4), Android 10+, player-free MP4/MP3 downloader with in-app updates and the approved tilted red arrow on yellow logo.
 
 - XML resource and manifest parsing: passed.
 - GitHub Actions workflow YAML parsing: passed.
@@ -16,3 +16,7 @@ Prepared version: 0.2.1 (code 3), Android 10+, player-free MP4/MP3 downloader wi
 - APK manifest, native ABI entries and APK v2 signing-block presence: inspected. This is not a cryptographic signature verification or an on-device installation test.
 
 In-app update installation must still be exercised on a physical Android device with two successively versioned APKs signed by the same key. See UPDATES.md. A successful compile alone does not verify live extraction or an Android installer round trip.
+
+0.2.1 is now published at https://github.com/rajibsarder72942/RS-Tube/releases/tag/v0.2.1; its anonymous update metadata and uploaded APK digest were verified by the one-time publishing workflow.
+
+0.2.2 removes manual update checks, checks automatically in the foreground, and opens Android installation confirmation after a user-requested update finishes verification. Compilation/unit tests/lint for this change are pending CI.

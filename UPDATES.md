@@ -1,10 +1,10 @@
 # In-app updates
 
-Starting with **0.2.0**, RS Tube checks this repository's public stable GitHub Releases on opening the app (at most once every six hours). The App Updates card also supports a manual check. A published build artifact or a source commit alone is not an app release.
+Starting with **0.2.2**, RS Tube silently checks this repository's public stable GitHub Releases whenever the app opens or returns to the foreground, and every five minutes while it remains open. A 30-second throttle avoids repeated checks on screen rotation. There is no check-for-updates button or idle updates panel. A published build artifact or a source commit alone is not an app release.
 
-When a newer `versionCode` is published, the app displays **Update available**, offers an in-app download with progress/cancel, validates the APK's size, SHA-256, package ID, version and signing certificate, and opens Android's package installer. No browser or third-party website is opened by the updater. Android may first require **Allow from this source** for RS Tube. The user must confirm installation; silent installation is not implemented.
+When a newer `versionCode` is published, the app displays **New version available**. Tapping **Update now** downloads inside the app with progress/cancel. After validating the APK's size, SHA-256, package ID, version and signing certificate, RS Tube opens Android's package installer automatically while the app is in the foreground. No browser or third-party website is opened by the updater. Android may first require **Allow from this source** for RS Tube. The user must confirm installation; silent installation is not implemented.
 
-The Android DownloadManager keeps transferring if the Activity rotates or backgrounds. Opening RS Tube again resumes progress display and verification. Installer cancellation leaves the verified APK ready to retry. The updater never automatically installs or automatically downloads over mobile data; the user first taps Download. A permitted user-started download can continue on mobile data.
+The Android DownloadManager keeps transferring if the Activity rotates or backgrounds. Opening RS Tube again resumes progress display, verification and a pending installer handoff. Installer cancellation leaves the verified APK ready to retry without repeatedly reopening the installer. A retry Install button appears only for an already downloaded update. Downloads require the user's Update now tap and may then continue on mobile data. Network check errors stay silent and retry automatically.
 
 ## One-time stable signing setup
 
@@ -36,7 +36,7 @@ Keep the repository public so users can check and download without embedding cre
 ## Required phone verification before calling the updater production-ready
 
 - Install a stable-key 0.2.0 build, then publish a higher-code build signed with that same key.
-- Confirm update discovery, Later, manual check, progress/cancel, background/reopen and completed download after restart.
+- Confirm automatic discovery on app open/return and while open, Later, no idle check button, progress/cancel, background/reopen and automatic installer handoff after verification.
 - Allow/deny installation permission, cancel the installer, retry, then install successfully and confirm app history remains.
 - Confirm a changed signer, checksum mismatch, wrong package/version, truncated file and failed network never open the installer.
 - Confirm every updater path stays in the app or Android system settings/installer, with no browser redirect.

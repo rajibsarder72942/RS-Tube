@@ -32,7 +32,7 @@ class AppUpdater(context: Context) {
     private fun apk(code: Long) = File(app.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "updates/RS-Tube-$code.apk")
 
     data class State(val message: String, val action: String, val progress: Int = -1, val cancellable: Boolean = false,
-        val availableVersion: String? = null)
+        val availableVersion: String? = null, val visible: Boolean = true, val readyToInstall: Boolean = false)
 
     private fun release(): AppRelease? = try {
         val json = JSONObject(prefs.getString("release", "")!!)
@@ -43,10 +43,11 @@ class AppUpdater(context: Context) {
     private fun json(release: AppRelease) = JSONObject().put("versionCode", release.code)
         .put("versionName", release.version).put("url", release.url).put("sha256", release.sha256).put("size", release.bytes)
 
-    fun check(automatic: Boolean = false) {
-        if (automatic && System.currentTimeMillis() - prefs.getLong("lastCheck", 0) < 6 * 60 * 60 * 1000L) return
+    fun check() {
+        val now = System.currentTimeMillis()
+        if (!UpdateFlow.shouldCheck(now, prefs.getLong("lastAttempt", 0))) return
         if (prefs.getLong("downloadId", -1) >= 0 || !checking.compareAndSet(false, true)) return
-        prefs.edit().putString("message", "Checking for app updates…").apply()
+        prefs.edit().putLong("lastAttempt", now).apply()
         executor.execute {
             try {
                 val releases = JSONArray(readJson("https://api.github.com/repos/${UpdatePolicy.REPOSITORY}/releases?per_page=20"))
@@ -73,25 +74,23 @@ class AppUpdater(context: Context) {
                 val newer = candidate?.takeIf { UpdatePolicy.isNewer(it, installed) }
                 val edit = prefs.edit().putLong("lastCheck", System.currentTimeMillis())
                 if (newer != null) edit.putString("release", json(newer).toString())
-                    .putString("message", "Update available · ${newer.version}")
-                else edit.remove("release").putString("message", "You are using the latest published version")
+                    .putString("message", "New version available · ${newer.version}")
+                else edit.remove("release").putString("message", "")
                 edit.apply()
             } catch (_: Exception) {
-                prefs.edit().putString("message", if (release() != null) "Update available · Check failed; tap to retry download"
-                    else "Could not check for updates. Tap to retry.").apply()
+                // Keep a previously discovered update. Network failures stay silent and retry automatically.
             } finally { checking.set(false) }
         }
     }
 
     fun state(): State {
-        if (checking.get()) return State("Checking for app updates…", "Checking…")
         val release = release()
         if (release == null || !UpdatePolicy.isNewer(release, installed)) {
             if (release != null) cancel(clearRelease = true)
-            return State(prefs.getString("message", "App version ${BuildConfig.VERSION_NAME}")!!, "Check for app updates")
+            return State("", "", visible = false)
         }
         val id = prefs.getLong("downloadId", -1)
-        if (id < 0) return State(prefs.getString("message", "Update available · ${release.version}")!!, "Download ${release.version}",
+        if (id < 0) return State(prefs.getString("message", "New version available · ${release.version}")!!, "Update now",
             availableVersion = release.version)
         try {
             manager.query(DownloadManager.Query().setFilterById(id)).use { cursor ->
@@ -100,7 +99,7 @@ class AppUpdater(context: Context) {
                 when (number(DownloadManager.COLUMN_STATUS).toInt()) {
                     DownloadManager.STATUS_SUCCESSFUL -> {
                         if (prefs.getLong("verified", -1) == release.code && apk(release.code).isFile)
-                            return State("Update ${release.version} ready to install", "Install update", 100)
+                            return State("Update ${release.version} ready to install", "Install update", 100, readyToInstall = true)
                         verify(release)
                         return State("Verifying update…", "Verifying…", -1, true)
                     }
@@ -133,7 +132,7 @@ class AppUpdater(context: Context) {
                 .setDestinationInExternalFilesDir(app, Environment.DIRECTORY_DOWNLOADS, "updates/${file.name}")
                 .setAllowedOverMetered(true).setAllowedOverRoaming(false)
             val id = manager.enqueue(request)
-            prefs.edit().putLong("downloadId", id).remove("verified").apply()
+            prefs.edit().putLong("downloadId", id).putBoolean("offerInstall", true).remove("verified").apply()
         } catch (_: Exception) { fail("Could not start update download. Check storage and retry.") }
     }
 
@@ -141,11 +140,20 @@ class AppUpdater(context: Context) {
         val id = prefs.getLong("downloadId", -1)
         if (id >= 0) manager.remove(id)
         release()?.let { apk(it.code).delete() }
-        prefs.edit().remove("downloadId").remove("verified").putString("message", "Update download cancelled")
+        prefs.edit().remove("downloadId").remove("verified").remove("offerInstall").putString("message", "Update download cancelled")
             .apply { if (clearRelease) remove("release") }.apply()
     }
 
     private fun fail(message: String) { cancel(); prefs.edit().putString("message", message).apply() }
+
+    fun takeInstallOffer(foreground: Boolean): Boolean {
+        val release = release() ?: return false
+        val shouldOffer = UpdateFlow.shouldOfferInstaller(
+            !verifying.get() && prefs.getLong("verified", -1) == release.code && apk(release.code).isFile,
+            prefs.getBoolean("offerInstall", false), foreground)
+        if (shouldOffer) prefs.edit().putBoolean("offerInstall", false).commit()
+        return shouldOffer
+    }
 
     private fun verify(release: AppRelease) {
         if (!verifying.compareAndSet(false, true)) return
@@ -197,13 +205,13 @@ class AppUpdater(context: Context) {
             try {
                 verifyApk(release)
                 main.post {
-                    if (!activity.isFinishing && !activity.isDestroyed) {
+                    if (!activity.isFinishing && !activity.isDestroyed && activity.hasWindowFocus()) {
                         try {
                             val uri = FileProvider.getUriForFile(app, "${app.packageName}.updates", apk(release.code))
                             activity.startActivity(Intent(Intent.ACTION_INSTALL_PACKAGE).setData(uri)
                                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                         } catch (_: Exception) { onError("Android could not open the installer. Tap Install update to retry.") }
-                    }
+                    } else prefs.edit().putBoolean("offerInstall", true).apply()
                 }
             } catch (e: Exception) { main.post { fail(e.message ?: "Update verification failed"); onError(e.message.orEmpty()) } }
             finally { verifying.set(false) }

@@ -33,12 +33,17 @@ class MainActivity : Activity() {
     private lateinit var progress: ProgressBar
     private lateinit var history: LinearLayout
     private lateinit var appUpdater: AppUpdater
+    private lateinit var appUpdateCard: LinearLayout
     private lateinit var appUpdateStatus: TextView
     private lateinit var appUpdateButton: Button
     private lateinit var appUpdateCancel: Button
     private lateinit var appUpdateProgress: ProgressBar
     private val handler = Handler(Looper.getMainLooper())
     private var lastHistory = ""
+    private var promptedUpdateVersion: String? = null
+    private val automaticUpdateCheck = object : Runnable {
+        override fun run() { appUpdater.check(); handler.postDelayed(this, 5 * 60 * 1000L) }
+    }
     private val poll = object : Runnable {
         override fun run() { refresh(); handler.postDelayed(this, 600) }
     }
@@ -73,7 +78,7 @@ class MainActivity : Activity() {
         body.addView(label("FACEBOOK  ·  YOUTUBE  ·  WEB LINKS", 11, mint, true).apply { setPadding(0, dp(18), 0, dp(24)) })
 
         appUpdater = AppUpdater(this)
-        val updateCard = columnCard()
+        val updateCard = columnCard().also { appUpdateCard = it; it.visibility = View.GONE }
         body.addView(updateCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
         updateCard.addView(label("APP UPDATES", 12, mint, true))
         appUpdateStatus = label("Version ${BuildConfig.VERSION_NAME}", 14, Color.WHITE)
@@ -83,13 +88,12 @@ class MainActivity : Activity() {
             indeterminateTintList = ColorStateList.valueOf(mint)
         }
         updateCard.addView(appUpdateProgress, LinearLayout.LayoutParams(-1, dp(20)))
-        appUpdateButton = button("Check for app updates", false).apply {
+        appUpdateButton = button("Update now", false).apply {
             setOnClickListener {
                 val state = appUpdater.state()
                 when {
-                    state.action == "Install update" -> appUpdater.install(this@MainActivity) { toast(it) }
+                    state.readyToInstall -> appUpdater.install(this@MainActivity) { toast(it) }
                     state.availableVersion != null -> appUpdater.download()
-                    state.action == "Check for app updates" -> appUpdater.check()
                 }
             }
         }
@@ -161,7 +165,10 @@ class MainActivity : Activity() {
         body.addView(button("About & source code", false).apply { setOnClickListener { about() } })
         body.addView(label("Download only content you own or have permission to save. Link availability depends on the source.", 12, muted).apply { setPadding(0, dp(16), 0, 0) })
 
-        if (savedInstanceState != null) link.setText(savedInstanceState.getString("link", ""))
+        if (savedInstanceState != null) {
+            link.setText(savedInstanceState.getString("link", ""))
+            promptedUpdateVersion = savedInstanceState.getString("promptedUpdateVersion")
+        }
         else receive(intent)
         if (!DownloadService.busy && DownloadStore.progress(this) in 0..99) {
             DownloadStore.state(this, "Previous download stopped. Paste the link to retry.")
@@ -216,21 +223,23 @@ class MainActivity : Activity() {
 
     private fun refreshAppUpdate() {
         val state = appUpdater.state()
+        appUpdateCard.visibility = if (state.visible) View.VISIBLE else View.GONE
+        if (!state.visible) return
         appUpdateStatus.text = state.message
         appUpdateButton.text = state.action
-        appUpdateButton.isEnabled = state.action == "Check for app updates" ||
-            state.action == "Install update" || state.availableVersion != null
+        appUpdateButton.isEnabled = state.readyToInstall || state.availableVersion != null
         appUpdateProgress.visibility = if (state.cancellable || state.progress == 100) View.VISIBLE else View.GONE
         appUpdateProgress.isIndeterminate = state.progress < 0
         appUpdateProgress.progress = state.progress.coerceAtLeast(0)
         appUpdateCancel.visibility = if (state.cancellable) View.VISIBLE else View.GONE
         val version = state.availableVersion
-        val prefs = getPreferences(MODE_PRIVATE)
-        if (version != null && hasWindowFocus() && prefs.getString("updatePrompt", "") != version) {
-            prefs.edit().putString("updatePrompt", version).apply()
-            AlertDialog.Builder(this).setTitle("Update available · $version")
-                .setMessage("Download the new RS Tube version here. Android will ask you to confirm installation.")
-                .setPositiveButton("Download update") { _, _ -> appUpdater.download() }
+        if (state.readyToInstall && appUpdater.takeInstallOffer(hasWindowFocus())) {
+            appUpdater.install(this) { toast(it) }
+        } else if (version != null && hasWindowFocus() && promptedUpdateVersion != version) {
+            promptedUpdateVersion = version
+            AlertDialog.Builder(this).setTitle("New version available · $version")
+                .setMessage("Update RS Tube now? It will download here, then Android will open the installation confirmation.")
+                .setPositiveButton("Update now") { _, _ -> appUpdater.download() }
                 .setNegativeButton("Later", null).show()
         }
     }
@@ -272,8 +281,8 @@ class MainActivity : Activity() {
     }
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receive(intent) }
-    override fun onResume() { super.onResume(); appUpdater.check(automatic = true); handler.post(poll) }
-    override fun onPause() { handler.removeCallbacks(poll); super.onPause() }
+    override fun onResume() { super.onResume(); handler.post(automaticUpdateCheck); handler.post(poll) }
+    override fun onPause() { handler.removeCallbacks(automaticUpdateCheck); handler.removeCallbacks(poll); super.onPause() }
     override fun onDestroy() { appUpdater.close(); super.onDestroy() }
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -285,6 +294,7 @@ class MainActivity : Activity() {
     }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("link", link.text.toString())
+        outState.putString("promptedUpdateVersion", promptedUpdateVersion)
         getPreferences(MODE_PRIVATE).edit().putBoolean("audio", isAudio()).putInt("quality", quality.selectedItemPosition).apply()
         super.onSaveInstanceState(outState)
     }
