@@ -61,7 +61,13 @@ class MainActivity : Activity() {
         setContentView(root)
         root.requestApplyInsets()
 
-        body.addView(label("↓  RS TUBE", 24, mint, true))
+        val brandHeader = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        brandHeader.addView(ImageView(this).apply {
+            setImageResource(R.drawable.brand_logo)
+            contentDescription = "RS Tube logo"
+        }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(12) })
+        brandHeader.addView(label("RS TUBE", 24, mint, true))
+        body.addView(brandHeader)
         body.addView(label("Your link. Your download.", 32, Color.WHITE, true).apply { setPadding(0, dp(30), 0, dp(8)) })
         body.addView(label("Save video as MP4 or audio as MP3.", 15, muted))
         body.addView(label("FACEBOOK  ·  YOUTUBE  ·  WEB LINKS", 11, mint, true).apply { setPadding(0, dp(18), 0, dp(24)) })

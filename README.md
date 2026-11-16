@@ -6,7 +6,7 @@ An Android downloader for **MP4 video** and **MP3 audio**. No built-in player.
 
 1. Open [Actions → Build Android APK](https://github.com/rajibsarder72942/RS-Tube/actions/workflows/android.yml).
 2. Open the latest successful run and download **RS-Tube-Android** under Artifacts (sign in to GitHub).
-3. Unzip it on your Android phone and install `RS-Tube-v0.2.0-test.apk`.
+3. Unzip it on your Android phone and install the versioned RS Tube APK. Official signed APKs are also available from [Releases](https://github.com/rajibsarder72942/RS-Tube/releases).
 4. Allow installation from your browser/file manager if Android asks. Android 10 or newer is required.
 
 The artifact also includes the exact source and SHA-256 checksums. Without configured stable signing secrets, CI builds a test APK; it is not published as an in-app update. Official update releases must share one private stable signing key. See [UPDATES.md](UPDATES.md) for the one-time setup and release process.
