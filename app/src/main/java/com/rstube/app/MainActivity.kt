@@ -10,6 +10,8 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.*
 import android.provider.Settings
@@ -22,10 +24,11 @@ import java.text.DateFormat
 import java.util.Date
 
 class MainActivity : Activity() {
-    private val mint = Color.rgb(99, 230, 190)
-    private val muted = Color.rgb(156, 177, 185)
-    private val bg = Color.rgb(13, 21, 25)
-    private val surface = Color.rgb(24, 36, 42)
+    private val accent = Color.parseColor("#DC143C")
+    private val muted = Color.parseColor("#59643A")
+    private val ink = Color.parseColor("#30391D")
+    private val bg = Color.parseColor("#D7E58A")
+    private val surface = Color.parseColor("#E7EEAF")
     private lateinit var link: EditText
     private lateinit var format: RadioGroup
     private lateinit var quality: Spinner
@@ -60,15 +63,16 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(bg, Color.parseColor("#C6D477")))
         }
         root.setOnApplyWindowInsetsListener { view, insets ->
             @Suppress("DEPRECATION")
             view.setPadding(0, insets.systemWindowInsetTop, 0, insets.systemWindowInsetBottom)
             insets
         }
-        val scroll = ScrollView(this).apply { isFillViewport = true }
-        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(22), dp(22), dp(24)) }
+        val scroll = ScrollView(this).apply { isFillViewport = true; clipToPadding = false; isVerticalScrollBarEnabled = false }
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(22), dp(20), dp(30)); clipChildren = false; clipToPadding = false }
         root.addView(scroll)
         scroll.addView(body)
         setContentView(root)
@@ -77,23 +81,26 @@ class MainActivity : Activity() {
         val brandHeader = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         brandHeader.addView(ImageView(this).apply {
             setImageResource(R.drawable.brand_logo)
+            background = rounded(Color.parseColor("#FFD600"))
+            clipToOutline = true
+            elevation = dp(4).toFloat()
             contentDescription = "RS Tube logo"
         }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(12) })
-        brandHeader.addView(label("RS TUBE", 24, mint, true))
+        brandHeader.addView(label("RS TUBE", 24, ink, true))
         body.addView(brandHeader)
-        body.addView(label("Your link. Your download.", 32, Color.WHITE, true).apply { setPadding(0, dp(30), 0, dp(8)) })
+        body.addView(label("Your link.\nYour download.", 30, ink, true).apply { setPadding(dp(6), dp(24), 0, dp(8)) })
         body.addView(label("Save video as MP4 or audio as MP3.", 15, muted))
-        body.addView(label("FACEBOOK  ·  YOUTUBE  ·  WEB LINKS", 11, mint, true).apply { setPadding(0, dp(18), 0, dp(24)) })
+        body.addView(label("FACEBOOK  ·  YOUTUBE  ·  WEB LINKS", 11, accent, true).apply { setPadding(0, dp(18), 0, dp(24)) })
 
         appUpdater = AppUpdater(this)
         val updateCard = columnCard().also { appUpdateCard = it; it.visibility = View.GONE }
         body.addView(updateCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
-        updateCard.addView(label("APP UPDATES", 12, mint, true))
-        appUpdateStatus = label("Version ${BuildConfig.VERSION_NAME}", 14, Color.WHITE)
+        updateCard.addView(label("APP UPDATES", 12, accent, true))
+        appUpdateStatus = label("Version ${BuildConfig.VERSION_NAME}", 14, ink)
         updateCard.addView(appUpdateStatus)
         appUpdateProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            progressTintList = ColorStateList.valueOf(mint)
-            indeterminateTintList = ColorStateList.valueOf(mint)
+            progressTintList = ColorStateList.valueOf(accent)
+            indeterminateTintList = ColorStateList.valueOf(accent)
         }
         updateCard.addView(appUpdateProgress, LinearLayout.LayoutParams(-1, dp(20)))
         appUpdateButton = button("Update now", false).apply {
@@ -111,15 +118,18 @@ class MainActivity : Activity() {
 
         val card = columnCard()
         body.addView(card)
-        card.addView(label("PASTE A LINK", 12, muted, true))
+        card.addView(label("PASTE A LINK", 12, accent, true))
         link = EditText(this).apply {
             hint = "https://…"
             setHintTextColor(muted)
-            setTextColor(Color.WHITE)
+            setTextColor(ink)
             textSize = 16f
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine(true)
-            backgroundTintList = ColorStateList.valueOf(mint)
+            backgroundTintList = null
+            background = ClayDrawable(resources.displayMetrics.density, Color.parseColor("#EEF2CB"), 18f, compact = true, sunken = true)
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            setPadding(dp(20), dp(10), dp(20), dp(10))
             contentDescription = "Video or audio link"
         }
         card.addView(link, LinearLayout.LayoutParams(-1, dp(58)))
@@ -132,38 +142,49 @@ class MainActivity : Activity() {
             }
         })
         card.addView(label("DOWNLOAD FORMAT", 12, muted, true).apply { setPadding(0, dp(18), 0, dp(8)) })
-        format = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        format = RadioGroup(this).apply {
+            orientation = RadioGroup.HORIZONTAL
+            background = ClayDrawable(resources.displayMetrics.density, Color.parseColor("#D5DEA0"), 22f, compact = true, sunken = true)
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
         format.addView(RadioButton(this).apply {
-            id = VIDEO; text = "Video · MP4"; setTextColor(Color.WHITE); buttonTintList = ColorStateList.valueOf(mint)
+            id = VIDEO; text = "Video · MP4"; styleFormatOption(this)
         }, LinearLayout.LayoutParams(0, dp(52), 1f))
         format.addView(RadioButton(this).apply {
-            id = AUDIO; text = "Audio · MP3"; setTextColor(Color.WHITE); buttonTintList = ColorStateList.valueOf(mint)
+            id = AUDIO; text = "Audio · MP3"; styleFormatOption(this)
         }, LinearLayout.LayoutParams(0, dp(52), 1f))
         card.addView(format)
-        quality = Spinner(this).apply { contentDescription = "Download quality" }
-        card.addView(quality, LinearLayout.LayoutParams(-1, dp(52)))
+        quality = Spinner(this).apply {
+            contentDescription = "Download quality"
+            background = ClayDrawable(resources.displayMetrics.density, Color.parseColor("#E0E8AB"), 18f, compact = true)
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            popupBackground = rounded(Color.parseColor("#F0F3D0"))
+            setPadding(dp(18), dp(4), dp(12), dp(4))
+        }
+        card.addView(quality, LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(10); bottomMargin = dp(6) })
         format.setOnCheckedChangeListener { _, _ -> setQuality() }
         val prefs = getPreferences(MODE_PRIVATE)
         format.check(if (prefs.getBoolean("audio", false)) AUDIO else VIDEO)
         quality.setSelection(prefs.getInt("quality", 1).coerceIn(0, if (isAudio()) 2 else 3))
         download = button("↓  Download", true).apply { setOnClickListener { startDownload() } }
-        card.addView(download, LinearLayout.LayoutParams(-1, dp(58)).apply { topMargin = dp(14) })
+        card.addView(download, LinearLayout.LayoutParams(-1, dp(64)).apply { topMargin = dp(12) })
         card.addView(label("Saved in Downloads / RS Tube", 12, muted).apply { setPadding(0, dp(12), 0, 0) })
 
         val stateCard = columnCard()
         body.addView(stateCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-        status = label("Ready to download", 15, Color.WHITE)
+        status = label("Ready to download", 15, ink)
         stateCard.addView(status)
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            progressTintList = ColorStateList.valueOf(mint)
-            indeterminateTintList = ColorStateList.valueOf(mint)
+            progressTintList = ColorStateList.valueOf(accent)
+            indeterminateTintList = ColorStateList.valueOf(accent)
         }
         stateCard.addView(progress, LinearLayout.LayoutParams(-1, dp(20)).apply { topMargin = dp(8) })
         cancel = button("Cancel download", false).apply {
             setOnClickListener { startService(Intent(this@MainActivity, DownloadService::class.java).setAction(DownloadService.CANCEL)) }
         }
         stateCard.addView(cancel)
-        body.addView(label("Recent downloads", 21, Color.WHITE, true).apply { setPadding(0, dp(28), 0, dp(12)) })
+        body.addView(label("Recent downloads", 21, ink, true).apply { setPadding(0, dp(28), 0, dp(12)) })
         history = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.addView(history)
         update = button("Update download engine", false).apply {
@@ -191,7 +212,7 @@ class MainActivity : Activity() {
             else listOf("360p · Small file", "720p · Balanced", "1080p · High quality", "Best available")
         quality.adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, labels) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
-                super.getView(position, convertView, parent).apply { (this as TextView).setTextColor(Color.WHITE) }
+                super.getView(position, convertView, parent).apply { (this as TextView).setTextColor(ink) }
         }.apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
         quality.setSelection(1)
     }
@@ -262,8 +283,8 @@ class MainActivity : Activity() {
             val item = items.getJSONObject(i)
             val card = columnCard()
             val audio = item.optBoolean("audio")
-            card.addView(label(if (audio) "MP3  ·  AUDIO" else "MP4  ·  VIDEO", 11, mint, true))
-            card.addView(label(item.optString("name"), 14, Color.WHITE, true).apply { maxLines = 3; setPadding(0, dp(6), 0, dp(4)) })
+            card.addView(label(if (audio) "MP3  ·  AUDIO" else "MP4  ·  VIDEO", 11, accent, true))
+            card.addView(label(item.optString("name"), 14, ink, true).apply { maxLines = 3; setPadding(0, dp(6), 0, dp(4)) })
             card.addView(label(item.optString("result"), 12, muted))
             card.addView(label(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(item.optLong("time"))), 11, muted))
             val uri = item.optString("uri")
@@ -280,7 +301,7 @@ class MainActivity : Activity() {
                 }
             })
             card.addView(button("Delete", false).apply {
-                setTextColor(Color.rgb(255, 125, 125))
+                setTextColor(Color.WHITE)
                 contentDescription = "Delete " + item.optString("name")
                 setOnClickListener { confirmDelete(item.getString("id"), uri, item.optString("name")) }
             })
@@ -431,19 +452,52 @@ class MainActivity : Activity() {
 
     private fun label(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
         text = value; textSize = size.toFloat(); setTextColor(color)
-        if (bold) setTypeface(typeface, Typeface.BOLD)
+        if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        if (bold && size <= 12) letterSpacing = 0.07f
         setLineSpacing(dp(3).toFloat(), 1f)
     }
+
     private fun columnCard() = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(18), dp(18), dp(18))
-        background = rounded(surface)
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(29), dp(28), dp(29), dp(28))
+        clipChildren = false
+        clipToPadding = false
+        background = ClayDrawable(resources.displayMetrics.density, surface)
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
     }
-    private fun rounded(color: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(18).toFloat() }
+
+    private fun rounded(color: Int) = GradientDrawable().apply {
+        setColor(color); cornerRadius = dp(18).toFloat()
+    }
+
+    private fun styleFormatOption(option: RadioButton) {
+        option.textSize = 14f
+        option.setTextColor(ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+            intArrayOf(accent, ink)))
+        option.buttonTintList = ColorStateList.valueOf(accent)
+        option.setPadding(dp(5), 0, dp(5), 0)
+        option.background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_checked),
+                ClayDrawable(resources.displayMetrics.density, Color.parseColor("#F2D8CB"), 18f, compact = true))
+            addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
+        }
+        option.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+    }
+
     private fun button(value: String, primary: Boolean) = Button(this).apply {
-        text = value; isAllCaps = false; textSize = 15f; minHeight = dp(48)
-        setTextColor(if (primary) bg else mint)
-        background = rounded(if (primary) mint else Color.TRANSPARENT)
-        setPadding(dp(12), 0, dp(12), 0)
+        text = value
+        isAllCaps = false
+        textSize = if (primary) 16f else 14f
+        minHeight = dp(56)
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        setTextColor(Color.WHITE)
+        backgroundTintList = null
+        stateListAnimator = null
+        elevation = 0f
+        background = ClayDrawable(resources.displayMetrics.density,
+            if (primary) accent else Color.parseColor("#BD1235"), 20f, compact = true)
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        setPadding(dp(20), dp(10), dp(20), dp(10))
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun toast(value: String) = Toast.makeText(this, value, Toast.LENGTH_LONG).show()
