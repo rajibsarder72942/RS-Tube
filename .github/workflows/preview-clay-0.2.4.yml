@@ -1,0 +1,74 @@
+name: Preview RS Tube clay interface once
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/preview-clay-0.2.4.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  preview:
+    if: github.event.head_commit.message == 'Preview RS Tube v0.2.4 clay interface once'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download the exact successful build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: rajibsarder72942/RS-Tube
+        run: |
+          gh api repos/$GH_REPO/actions/runs/45210819095 > run.json
+          python3 - <<'PY'
+          import json
+          run=json.load(open('run.json'))
+          assert run['head_sha']=='0dcb7ad70596c3764dc6d998c12cf0317ddc472e' and run['conclusion']=='success'
+          PY
+          gh api repos/$GH_REPO/actions/artifacts/14836506361/zip > app.zip
+          echo 'f1b1e02cec6c29db66792dcea522bf070eea2aa2ff1b15343447f412d41eb9fe  app.zip' | sha256sum --check
+          mkdir dist
+          unzip -q app.zip -d dist
+      - name: Enable hardware acceleration on the ephemeral runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Open the real Android interface
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 2048M
+          disk-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          script: |
+            mkdir -p preview
+            adb shell wm size 720x1600
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb install dist/RS-Tube-v0.2.4.apk
+            adb shell am start -W -n com.rstube.app/.MainActivity
+            sleep 4
+            adb shell pidof com.rstube.app
+            adb shell dumpsys window | grep 'mCurrentFocus' | grep 'com.rstube.app'
+            adb exec-out screencap -p > preview/clay-home.png
+            timeout 20s adb shell uiautomator dump /sdcard/clay-home.xml || true
+            adb pull /sdcard/clay-home.xml preview/clay-home.xml || true
+            adb shell input swipe 360 1400 360 450 450
+            sleep 2
+            adb exec-out screencap -p > preview/clay-lower.png
+            adb logcat -d -s AndroidRuntime:E > preview/android-runtime.txt
+      - name: Save screen captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RS-Tube-Clay-Preview
+          path: preview/*
+          if-no-files-found: ignore
+          retention-days: 7
