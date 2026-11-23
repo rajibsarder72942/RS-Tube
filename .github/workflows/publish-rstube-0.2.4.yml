@@ -1,0 +1,97 @@
+name: Publish verified RS Tube 0.2.4 once
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-rstube-0.2.4.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rstube-one-time-publish-0.2.4
+  cancel-in-progress: false
+
+jobs:
+  publish-verified-apk:
+    if: github.repository == 'rajibsarder72942/RS-Tube' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'Publish verified RS Tube v0.2.4 once'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: rajibsarder72942/RS-Tube
+    steps:
+      - name: Check exact successful build
+        run: |
+          gh api repos/$GH_REPO/actions/runs/45210819095 > run.json
+          python3 - <<'PY'
+          import json
+          run = json.load(open('run.json'))
+          assert run['head_sha'] == '0dcb7ad70596c3764dc6d998c12cf0317ddc472e'
+          assert run['conclusion'] == 'success' and run['status'] == 'completed'
+          PY
+      - name: Download only the previously verified signed artifact
+        run: |
+          gh api repos/$GH_REPO/actions/artifacts/14836506361/zip > signed-build.zip
+          echo 'f1b1e02cec6c29db66792dcea522bf070eea2aa2ff1b15343447f412d41eb9fe  signed-build.zip' | sha256sum --check
+          mkdir dist
+          unzip -q signed-build.zip -d dist
+          gh api repos/$GH_REPO/actions/artifacts/14834749913/zip > signer-tool.zip
+          echo '914b7d9e31ff9343573d4a9f7052ab30310c6040ab31611d842d6d7ad1e447b4  signer-tool.zip' | sha256sum --check
+          mkdir signer-tool
+          unzip -q signer-tool.zip -d signer-tool
+      - name: Verify stable version, package bytes and signing certificate
+        run: |
+          python3 - <<'PY'
+          import json, hashlib
+          from pathlib import Path
+          dist=Path('dist')
+          metadata=json.loads((dist/'update.json').read_text())
+          assert metadata['versionCode']==6 and metadata['versionName']=='0.2.4'
+          assert metadata['url']=='https://github.com/rajibsarder72942/RS-Tube/releases/download/v0.2.4/RS-Tube-v0.2.4.apk'
+          apk=dist/'RS-Tube-v0.2.4.apk'
+          assert apk.stat().st_size==metadata['size']
+          assert hashlib.sha256(apk.read_bytes()).hexdigest()==metadata['sha256']
+          assert not list(dist.glob('*-test.apk'))
+          for line in (dist/'SHA256SUMS.txt').read_text().splitlines():
+              digest,name=line.split(maxsplit=1)
+              assert hashlib.sha256((dist/name).read_bytes()).hexdigest()==digest
+          assert set(p.name for p in dist.iterdir()) == {'RS-Tube-v0.2.4.apk','RS-Tube-source.zip','SHA256SUMS.txt','update.json'}
+          PY
+          java -jar signer-tool/apksigner.jar verify --verbose --print-certs dist/RS-Tube-v0.2.4.apk > signature.txt
+          grep -F 'Signer #1 certificate SHA-256 digest: 849367b4588c4d57c3679d6f91cfed088b59a336496fcc900706ec67c4ac65cd' signature.txt
+      - name: Refuse to overwrite any existing release or unrelated tag
+        run: |
+          if gh release view v0.2.4 >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite it.'
+            exit 1
+          fi
+          if gh api repos/$GH_REPO/git/ref/tags/v0.2.4 > tag.json 2>/dev/null; then
+            python3 - <<'PY'
+          import json
+          tag=json.load(open('tag.json'))
+          assert tag['object']['type']=='commit' and tag['object']['sha']=='0dcb7ad70596c3764dc6d998c12cf0317ddc472e'
+          PY
+          fi
+      - name: Publish only version 0.2.4 at its tested source commit
+        run: |
+          gh release create v0.2.4 dist/RS-Tube-v0.2.4.apk dist/update.json dist/SHA256SUMS.txt dist/RS-Tube-source.zip --target 0dcb7ad70596c3764dc6d998c12cf0317ddc472e --title 'RS Tube v0.2.4' --notes 'Claymorphism redesign with an olive-lime background, soft raised cards, inset link input, rounded format selector and crimson-red buttons. Dark olive text and deeper crimson captions improve readability. The real signed APK was installed and visually checked on a 360dp Android 15 emulator. Existing downloads, delete options, automatic in-app updates and the approved logo are retained. Build, tests, lint, signing certificate and release checksums verified.'
+      - name: Verify anonymous update metadata and uploaded APK digest
+        run: |
+          curl --fail --location --proto '=https' --retry 5 --retry-all-errors --retry-delay 2 https://github.com/rajibsarder72942/RS-Tube/releases/download/v0.2.4/update.json -o public-update.json
+          gh api repos/$GH_REPO/releases/tags/v0.2.4 > published.json
+          python3 - <<'PY'
+          import json
+          expected=json.load(open('dist/update.json'))
+          assert json.load(open('public-update.json'))==expected
+          release=json.load(open('published.json'))
+          assert not release['draft'] and not release['prerelease']
+          apk=next(a for a in release['assets'] if a['name']=='RS-Tube-v0.2.4.apk')
+          assert apk['size']==expected['size']
+          assert apk['digest']=='sha256:'+expected['sha256']
+          assert apk['browser_download_url']==expected['url']
+          print('Published release, anonymous update metadata and APK digest verified.')
+          PY
