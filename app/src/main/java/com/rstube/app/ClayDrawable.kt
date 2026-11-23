@@ -13,7 +13,7 @@ class ClayDrawable(
     private val sunken: Boolean = false
 ) : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var opacity = 255
+    private var drawableAlpha = 255
     private var filter: ColorFilter? = null
     private var pressed = false
 
@@ -33,8 +33,8 @@ class ClayDrawable(
 
         paint.reset()
         paint.isAntiAlias = true
-        paint.alpha = opacity
         paint.color = base
+        paint.alpha = drawableAlpha
         paint.colorFilter = filter
         paint.setShadowLayer(blur, -offset, -offset, Color.argb(175, 255, 255, 226))
         canvas.drawRoundRect(face, corner, corner, paint)
@@ -69,7 +69,7 @@ class ClayDrawable(
         invalidateSelf()
         return true
     }
-    override fun setAlpha(alpha: Int) { opacity = alpha; invalidateSelf() }
+    override fun setAlpha(alpha: Int) { drawableAlpha = alpha; invalidateSelf() }
     override fun setColorFilter(colorFilter: ColorFilter?) { filter = colorFilter; invalidateSelf() }
     @Suppress("DEPRECATION")
     override fun getOpacity() = PixelFormat.TRANSLUCENT

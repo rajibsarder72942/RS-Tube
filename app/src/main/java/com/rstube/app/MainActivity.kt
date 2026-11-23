@@ -25,6 +25,7 @@ import java.util.Date
 
 class MainActivity : Activity() {
     private val accent = Color.parseColor("#DC143C")
+    private val crimsonInk = Color.parseColor("#9F1234")
     private val muted = Color.parseColor("#59643A")
     private val ink = Color.parseColor("#30391D")
     private val bg = Color.parseColor("#D7E58A")
@@ -90,12 +91,12 @@ class MainActivity : Activity() {
         body.addView(brandHeader)
         body.addView(label("Your link.\nYour download.", 30, ink, true).apply { setPadding(dp(6), dp(24), 0, dp(8)) })
         body.addView(label("Save video as MP4 or audio as MP3.", 15, muted))
-        body.addView(label("FACEBOOK  ·  YOUTUBE  ·  WEB LINKS", 11, accent, true).apply { setPadding(0, dp(18), 0, dp(24)) })
+        body.addView(label("FACEBOOK  ·  YOUTUBE  ·  WEB LINKS", 11, crimsonInk, true).apply { setPadding(0, dp(18), 0, dp(24)) })
 
         appUpdater = AppUpdater(this)
         val updateCard = columnCard().also { appUpdateCard = it; it.visibility = View.GONE }
         body.addView(updateCard, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
-        updateCard.addView(label("APP UPDATES", 12, accent, true))
+        updateCard.addView(label("APP UPDATES", 12, crimsonInk, true))
         appUpdateStatus = label("Version ${BuildConfig.VERSION_NAME}", 14, ink)
         updateCard.addView(appUpdateStatus)
         appUpdateProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -118,7 +119,7 @@ class MainActivity : Activity() {
 
         val card = columnCard()
         body.addView(card)
-        card.addView(label("PASTE A LINK", 12, accent, true))
+        card.addView(label("PASTE A LINK", 12, crimsonInk, true))
         link = EditText(this).apply {
             hint = "https://…"
             setHintTextColor(muted)
@@ -283,7 +284,7 @@ class MainActivity : Activity() {
             val item = items.getJSONObject(i)
             val card = columnCard()
             val audio = item.optBoolean("audio")
-            card.addView(label(if (audio) "MP3  ·  AUDIO" else "MP4  ·  VIDEO", 11, accent, true))
+            card.addView(label(if (audio) "MP3  ·  AUDIO" else "MP4  ·  VIDEO", 11, crimsonInk, true))
             card.addView(label(item.optString("name"), 14, ink, true).apply { maxLines = 3; setPadding(0, dp(6), 0, dp(4)) })
             card.addView(label(item.optString("result"), 12, muted))
             card.addView(label(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(item.optLong("time"))), 11, muted))
@@ -473,7 +474,7 @@ class MainActivity : Activity() {
     private fun styleFormatOption(option: RadioButton) {
         option.textSize = 14f
         option.setTextColor(ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-            intArrayOf(accent, ink)))
+            intArrayOf(crimsonInk, ink)))
         option.buttonTintList = ColorStateList.valueOf(accent)
         option.setPadding(dp(5), 0, dp(5), 0)
         option.background = StateListDrawable().apply {
