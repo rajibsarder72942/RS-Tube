@@ -160,7 +160,7 @@ class MainActivity : Activity() {
             contentDescription = "Download quality"
             background = ClayDrawable(resources.displayMetrics.density, Color.parseColor("#E0E8AB"), 18f, compact = true)
             setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-            popupBackground = rounded(Color.parseColor("#F0F3D0"))
+            setPopupBackgroundDrawable(rounded(Color.parseColor("#F0F3D0")))
             setPadding(dp(18), dp(4), dp(12), dp(4))
         }
         card.addView(quality, LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(10); bottomMargin = dp(6) })
